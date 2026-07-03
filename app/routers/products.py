@@ -28,7 +28,7 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     return new_product
 
 @router.get("/", response_model=ProductListResponse)
-def read_products(page: int | None = 1, page_size: int | None = 3, db: Session = Depends(get_db)):
+def read_products(page: int | None = 1, page_size: int | None = 10, db: Session = Depends(get_db)):
 
     total = db.query(Product).count()
 
@@ -57,10 +57,16 @@ def update_product(product_id: int, product: ProductUpdate, db: Session = Depend
     if not product_db:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    category = db.get(Category, product.category_id)
+    existing_product = db.query(Product).filter(Product.name == product.name).first()
 
-    if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    if existing_product:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product already exists with the same name.")
+
+    if product.category_id is not None:
+        category = db.get(Category, product.category_id)
+
+        if not category:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
     data = product.model_dump(exclude_unset=True).items()
 
