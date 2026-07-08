@@ -24,7 +24,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 SECRET_KEY = "secret-oto"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 def create_access_token(data: dict):
     to_encode = data.copy()

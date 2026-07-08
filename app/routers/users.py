@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 
-from app.schemas.user import UserCreate, UserResponse, UserLogin
+from app.schemas.user import UserCreate, UserResponse, UserLogin, UserUpdate
 from app.database import get_db
 from app.models.user import User
 from app.security import (
@@ -63,6 +63,38 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
+@router.patch("/me")
+def update_me(user: UserUpdate,
+              current_user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)
+):
+    existing_username = db.query(User).filter(User.username == user.username).first()
+
+    if existing_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+
+    existing_email = db.query(User).filter(User.email == user.email).first()
+
+    if existing_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+
+    data = user.model_dump(exclude_unset=True, exclude={"password"})
+
+    hashed_password = hash_password(user.password) if user.password else current_user.hashed_password
+
+    current_user.hashed_password = hashed_password
+
+    print(data)
+
+    for field, value in data.items():
+        setattr(current_user, field, value)
+
+    db.commit()
+
+    return {
+        "message": "Profile updated",
+    }
+
 @router.get("/", response_model=list[UserResponse])
 def read_users(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     users = db.query(User).all()
@@ -78,8 +110,51 @@ def read_user(user_id: int, db: Session = Depends(get_db), current_user: User = 
 
     return user
 
+@router.delete("/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    user = db.query(User).filter(User.id == user_id).first()
 
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    db.delete(user)
+    db.commit()
+
+    return {"message": "User deleted"}
+
+@router.patch("/{user_id}/make_admin")
+def make_admin(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.role == "admin":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already an admin")
+
+    user.role = "admin"
+
+    db.commit()
+    return {"message": f"User - {user.username} is now an admin"}
+
+@router.patch("/{user_id}/remove_admin")
+def remove_admin(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.role == "user":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already an user")
+
+    if current_user.id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot remove admin privileges from yourself")
+
+    user.role = "user"
+
+    db.commit()
+
+    return {"message": f"User - {user.username} is now an user"}
 
 
 
