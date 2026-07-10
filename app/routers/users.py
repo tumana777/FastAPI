@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, BackgroundTasks
 from sqlalchemy.orm import Session
+from app.services import send_email, write_log
 
 from app.schemas.user import UserCreate, UserResponse, UserLogin, UserUpdate
 from app.database import get_db
@@ -12,7 +13,7 @@ from app.security import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(user: UserCreate, background_task: BackgroundTasks, db: Session = Depends(get_db)):
     existing_user_username = db.query(User).filter(User.username == user.username).first()
 
     if existing_user_username:
@@ -32,6 +33,12 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # send_email(new_user.email)
+    # write_log(new_user.username)
+
+    background_task.add_task(send_email, new_user.email)
+    background_task.add_task(write_log, new_user.username)
 
     return new_user
 

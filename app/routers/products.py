@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.database import get_db
+from app.database import get_db, get_async_db
 from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.category import Category
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate, ProductListResponse
+from sqlalchemy import select, func
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -27,14 +29,32 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
 
     return new_product
 
-@router.get("/", response_model=ProductListResponse)
-def read_products(page: int | None = 1, page_size: int | None = 10, db: Session = Depends(get_db)):
+# @router.get("/", response_model=ProductListResponse)
+# def read_products(page: int | None = 1, page_size: int | None = 10, db: Session = Depends(get_db)):
+#
+#     total = db.query(Product).count()
+#
+#     offset = (page - 1) * page_size
+#
+#     products = db.query(Product).offset(offset).limit(page_size).all()
+#
+#     return {
+#         "total": total,
+#         "items": products,
+#     }
 
-    total = db.query(Product).count()
+@router.get("/", response_model=ProductListResponse)
+async def read_products(page: int | None = 1, page_size: int | None = 10, db: AsyncSession = Depends(get_async_db)):
+
+    total_products = await db.execute(select(func.count()).select_from(Product))
+
+    total = total_products.scalar()
 
     offset = (page - 1) * page_size
 
-    products = db.query(Product).offset(offset).limit(page_size).all()
+    products = await db.execute(select(Product).offset(offset).limit(page_size))
+
+    products = products.scalars().all()
 
     return {
         "total": total,
