@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import categories, products, users
+from app.routers import categories, products, users, websockets
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.logging import log_request
 
@@ -22,3 +22,4 @@ app.middleware("http")(log_request)
 app.include_router(categories.router)
 app.include_router(products.router)
 app.include_router(users.router)
+app.include_router(websockets.router)
