@@ -1,4 +1,9 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.encoders import jsonable_encoder
+from starlette.responses import JSONResponse
+
 from app.database import get_db, get_async_db
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +11,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductResponse, ProductUpdate, ProductListResponse
 from sqlalchemy import select, func
+from app.exceptions import ProductNotFound, ProductAlreadyExist
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -19,7 +25,7 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     existing_product = db.query(Product).filter(Product.name == product.name).first()
 
     if existing_product:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product already exists with the same name.")
+        raise ProductAlreadyExist(product_name=product.name)
 
     new_product = Product(**product.model_dump())
 
@@ -66,7 +72,7 @@ def read_product(product_id: int, db: Session = Depends(get_db)):
     product = db.get(Product, product_id)
 
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        raise ProductNotFound()
 
     return product
 
@@ -75,12 +81,12 @@ def update_product(product_id: int, product: ProductUpdate, db: Session = Depend
     product_db = db.get(Product, product_id)
 
     if not product_db:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        raise ProductNotFound()
 
     existing_product = db.query(Product).filter(Product.name == product.name).first()
 
     if existing_product:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product already exists with the same name.")
+        raise ProductAlreadyExist(product_name=product.name)
 
     if product.category_id is not None:
         category = db.get(Category, product.category_id)
@@ -98,12 +104,32 @@ def update_product(product_id: int, product: ProductUpdate, db: Session = Depend
 
     return product_db
 
+@router.patch("/{product_id}")
+def update_product_price(product_id: int, new_price: float, db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
+
+    if not product:
+        raise ProductNotFound()
+
+    old_data = {
+        "price": product.price,
+        "updated_at": datetime.now()
+    }
+
+    encoded_data = jsonable_encoder(old_data)
+
+    product.price = new_price
+
+    db.commit()
+
+    return JSONResponse(status_code=200, content=encoded_data)
+
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.get(Product, product_id)
 
     if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+        raise ProductNotFound()
 
     db.delete(product)
     db.commit()
